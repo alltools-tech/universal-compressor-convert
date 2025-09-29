@@ -1,11 +1,20 @@
 import os
 import tempfile
 import subprocess
-from flask import Flask, request, send_file, jsonify
-from PIL import Image
-import io
+
+from flask import Flask, send_from_directory
+import os
 
 app = Flask(__name__)
+
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'index.html')
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))  # Default to 5000 if not specified
+    app.run(host='0.0.0.0', port=port)
+
 
 @app.route("/compress-pdf", methods=["POST"])
 def compress_pdf():

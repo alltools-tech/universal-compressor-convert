@@ -50,15 +50,7 @@ def images_to_pdf():
             img = Image.open(img_file.stream).convert("RGB")
         # BMP, PNG, JPEG, WebP
         else:
-            
-from PIL import Image, UnidentifiedImageError
-import io
-
-try:
-    img_bytes = img_file.read()
-    img = Image.open(io.BytesIO(img_bytes))
-except UnidentifiedImageError:
-    return "Invalid image file!", 400
+            img = Image.open(img_file.stream)
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
         images.append(img)

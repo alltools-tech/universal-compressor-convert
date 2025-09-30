@@ -8,10 +8,9 @@
     body { background: #eef3f9; }
     .container-box { max-width: 600px; margin: 2em auto; background: #fff; border-radius: 13px; box-shadow: 0 2px 14px #2222; padding: 2em; }
     .preview-frame { width: 340px; height: 260px; margin: 1em auto; background: #fafbfc; border-radius: 8px; border: 1px solid #cfd8dc; display: flex; align-items: center; justify-content: center; overflow: hidden;}
-    .preview-img { max-width: 100%; max-height: 100%; border-radius: 6px; border: none; cursor: pointer; transition: box-shadow .2s; }
+    .preview-img { max-width: 100%; max-height: 100%; border-radius: 6px; border: none; cursor: pointer; }
     .file-info, .compressed-info { margin: 1em 0; font-size: 1em; color: #195a6d;}
     .error { color: #d32f2f; margin-top: .7em; text-align: center;}
-    .advanced-panel { display: none; margin-top: 1em; background: #f6f6f6; padding: 1em; border-radius: 8px; }
     .slider-label { font-weight: 500; }
   </style>
 </head>
@@ -31,32 +30,18 @@
         <input type="range" id="qualitySlider" min="10" max="100" value="80" step="1" style="width: 180px;">
       </div>
       <div class="mb-2">
-        <label class="slider-label">Resize: </label>
-        <input type="number" id="resizeWidth" placeholder="Width (px)" style="width: 100px;">
-        <input type="number" id="resizeHeight" placeholder="Height (px)" style="width: 100px;">
-      </div>
-      <div class="mb-2">
         <label class="slider-label">Output Format: </label>
         <select id="formatSelect">
           <option value="pdf">PDF</option>
           <option value="jpeg">JPEG</option>
           <option value="png">PNG</option>
-          <option value="svg">SVG</option>
+          <option value="webp">WebP</option>
           <option value="avif">AVIF</option>
           <option value="heif">HEIF</option>
           <option value="heic">HEIC</option>
         </select>
       </div>
       <button id="convertBtn" class="btn btn-primary">Convert / Compress</button>
-      <button id="toggleAdvanced" class="btn btn-link" style="margin-left:15px;">Advanced Options</button>
-    </div>
-    <div class="advanced-panel" id="advancedPanel">
-      <div>
-        <label>DPI: </label>
-        <input type="number" id="dpiInput" style="width: 90px;" value="150">
-        <label style="margin-left:15px;">Grayscale: </label>
-        <input type="checkbox" id="grayscaleInput">
-      </div>
     </div>
     <div class="error" id="errorMsg"></div>
     <div class="compressed-section" id="compressedSection" style="display:none;">
@@ -74,18 +59,12 @@
     const actionRow = document.getElementById('actionRow');
     const qualitySlider = document.getElementById('qualitySlider');
     const qualityValue = document.getElementById('qualityValue');
-    const resizeWidth = document.getElementById('resizeWidth');
-    const resizeHeight = document.getElementById('resizeHeight');
     const formatSelect = document.getElementById('formatSelect');
     const convertBtn = document.getElementById('convertBtn');
     const errorMsg = document.getElementById('errorMsg');
     const compressedSection = document.getElementById('compressedSection');
     const compressedInfo = document.getElementById('compressedInfo');
     const downloadBtn = document.getElementById('downloadBtn');
-    const toggleAdvanced = document.getElementById('toggleAdvanced');
-    const advancedPanel = document.getElementById('advancedPanel');
-    const dpiInput = document.getElementById('dpiInput');
-    const grayscaleInput = document.getElementById('grayscaleInput');
 
     let files = [];
     let compressedBlob = null;
@@ -126,33 +105,20 @@
       compressedBlob = null;
       compressedDataUrl = null;
       compressedFilename = null;
-      advancedPanel.style.display = 'none';
     }
 
     function showImagePreview(file) {
       previewFrame.style.display = "flex";
       imgPreview.style.display = "block";
-      if (file.type === "image/svg+xml" || /\.svg$/i.test(file.name)) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          imgPreview.src = "data:image/svg+xml;base64," + btoa(e.target.result);
-        };
-        reader.readAsText(file);
-      } else {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          imgPreview.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        imgPreview.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
     }
 
     qualitySlider.oninput = function() {
       qualityValue.textContent = qualitySlider.value;
-    };
-
-    toggleAdvanced.onclick = function() {
-      advancedPanel.style.display = advancedPanel.style.display === "none" ? "block" : "none";
     };
 
     convertBtn.onclick = async function() {
@@ -160,11 +126,7 @@
       let fd = new FormData();
       files.forEach((f,i) => fd.append("file"+i, f));
       fd.append("quality", qualitySlider.value);
-      fd.append("resize_width", resizeWidth.value);
-      fd.append("resize_height", resizeHeight.value);
       fd.append("output_format", formatSelect.value);
-      fd.append("dpi", dpiInput.value);
-      fd.append("grayscale", grayscaleInput.checked ? "1" : "0");
       try {
         const resp = await fetch("/convert", { method: "POST", body: fd });
         if (!resp.ok) throw new Error("Conversion failed");

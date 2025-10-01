@@ -8,6 +8,22 @@ from PIL import Image
 
 app = Flask(__name__)
 
+def convert_office_to_pdf(input_file, output_dir):
+    # LibreOffice must be installed and "soffice" available in PATH
+    cmd = [
+        "soffice",
+        "--headless",
+        "--convert-to", "pdf",
+        "--outdir", output_dir,
+        input_file
+    ]
+    subprocess.run(cmd, check=True)
+    # Find output PDF
+    base = os.path.basename(input_file)
+    name, _ = os.path.splitext(base)
+    pdf_path = os.path.join(output_dir, f"{name}.pdf")
+    return pdf_path
+
 @app.route('/')
 def serve_index():
     return send_from_directory('.', 'index.html')
@@ -24,46 +40,74 @@ def convert():
     imgs = []
     pdfs = []
 
-    # Separate PDFs and images
+    office_exts = ["doc", "docx", "xls", "xlsx"]
+    tiff_exts = ["tif", "tiff"]
+
     for file in files:
         ext = file.filename.split(".")[-1].lower()
         mime = file.mimetype
-        if ext == "pdf" or mime == "application/pdf":
+        fname = file.filename
+
+        # Office files: Convert to PDF first
+        if ext in office_exts:
+            with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp_office:
+                file.save(tmp_office.name)
+                try:
+                    pdf_path = convert_office_to_pdf(tmp_office.name, os.path.dirname(tmp_office.name))
+                    with open(pdf_path, "rb") as pfile:
+                        pdf_stream = io.BytesIO(pfile.read())
+                        pdfs.append(pdf_stream)
+                except Exception as e:
+                    return jsonify({"error": f"Office to PDF error: {str(e)}"}), 500
+                finally:
+                    os.remove(tmp_office.name)
+                    if os.path.exists(pdf_path):
+                        os.remove(pdf_path)
+        # PDF files
+        elif ext == "pdf" or mime == "application/pdf":
             pdfs.append(file)
-        else:
-            img = None
-            if ext in ["heif", "heic"]:
-                try:
-                    import pillow_heif
-                    heif_file = pillow_heif.read_heif(file.read())
-                    img = Image.frombytes(
-                        heif_file.mode, heif_file.size, heif_file.data, "raw"
-                    )
-                except ImportError:
-                    return jsonify({"error": "pillow-heif not installed"}), 500
-            elif ext == "avif":
-                img = Image.open(file.stream).convert("RGB")
-            elif ext == "webp":
-                img = Image.open(file.stream)
-            elif ext == "svg":
-                try:
-                    from cairosvg import svg2png
-                    png_bytes = svg2png(bytestring=file.read())
-                    img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-                except ImportError:
-                    return jsonify({"error": "cairosvg not installed"}), 500
-            else:
-                img = Image.open(file.stream)
-            if img:
+        # TIFF images
+        elif ext in tiff_exts:
+            img = Image.open(file.stream)
+            imgs.append(img)
+        # HEIC/HEIF images
+        elif ext in ["heif", "heic"]:
+            try:
+                import pillow_heif
+                heif_file = pillow_heif.read_heif(file.read())
+                img = Image.frombytes(
+                    heif_file.mode, heif_file.size, heif_file.data, "raw"
+                )
                 imgs.append(img)
+            except ImportError:
+                return jsonify({"error": "pillow-heif not installed"}), 500
+        # AVIF images
+        elif ext == "avif":
+            img = Image.open(file.stream).convert("RGB")
+            imgs.append(img)
+        # WebP
+        elif ext == "webp":
+            img = Image.open(file.stream)
+            imgs.append(img)
+        # SVG to PNG for PDF
+        elif ext == "svg":
+            try:
+                from cairosvg import svg2png
+                png_bytes = svg2png(bytestring=file.read())
+                img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+                imgs.append(img)
+            except ImportError:
+                return jsonify({"error": "cairosvg not installed"}), 500
+        # Other images
+        else:
+            try:
+                img = Image.open(file.stream)
+                imgs.append(img)
+            except Exception as e:
+                return jsonify({"error": f"Image error: {str(e)}"}), 400
 
     # PDF compression with slider-based quality
     if pdfs and output_format == "pdf":
-        # Map slider value to Ghostscript advanced compression
-        # Lower quality = lower resolution and higher downsampling
-        # Higher quality = higher resolution, less downsampling
-        # We'll dynamically set image resolution and downsampling
-        # For advanced control, set -dColorImageResolution and -dDownsampleType
         if quality <= 30:
             pdf_setting = "/screen"
             resolution = 72
@@ -78,7 +122,9 @@ def convert():
             resolution = 300
 
         with tempfile.NamedTemporaryFile(suffix=".pdf") as in_file, tempfile.NamedTemporaryFile(suffix=".pdf") as out_file:
-            pdfs[0].save(in_file.name)
+            pdf_data = pdfs[0].read() if hasattr(pdfs[0], "read") else pdfs[0].getvalue()
+            in_file.write(pdf_data)
+            in_file.flush()
             gs_cmd = [
                 "gs",
                 "-sDEVICE=pdfwrite",
@@ -110,7 +156,7 @@ def convert():
         return send_file(output, mimetype="application/pdf", as_attachment=True, download_name="converted.pdf")
 
     # Image(s) to image format
-    if imgs and output_format in ["jpeg", "png", "webp", "avif", "heif", "heic"]:
+    if imgs and output_format in ["jpeg", "png", "webp", "avif", "heif", "heic", "tiff"]:
         output = io.BytesIO()
         save_kwargs = {}
         if output_format in ["jpeg", "webp", "avif", "heif", "heic"]:
@@ -122,13 +168,13 @@ def convert():
         return send_file(output, mimetype=mime, as_attachment=True, download_name=f"converted.{ext}")
 
     # PDF to image conversion (first page only, speed)
-    if pdfs and output_format in ["jpeg", "png", "webp", "avif", "heif", "heic"]:
+    if pdfs and output_format in ["jpeg", "png", "webp", "avif", "heif", "heic", "tiff"]:
         try:
             import fitz
         except ImportError:
             return jsonify({"error": "PyMuPDF (fitz) not installed"}), 500
-        pdf_stream = io.BytesIO(pdfs[0].read())
-        pdf_doc = fitz.open(stream=pdf_stream.read(), filetype="pdf")
+        pdf_data = pdfs[0].read() if hasattr(pdfs[0], "read") else pdfs[0].getvalue()
+        pdf_doc = fitz.open(stream=pdf_data, filetype="pdf")
         page = pdf_doc.load_page(0)
         pix = page.get_pixmap()
         img_bytes = pix.tobytes(output="png")

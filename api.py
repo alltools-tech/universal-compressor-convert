@@ -59,17 +59,23 @@ def convert():
 
     # PDF compression with slider-based quality
     if pdfs and output_format == "pdf":
-        # Map quality (10-100) to Ghostscript PDFSETTINGS
-        # Lower quality = more compressed (smaller), higher quality = less compressed
-        # We'll interpolate between /screen (low), /ebook (medium), /printer (high), /prepress (best)
+        # Map slider value to Ghostscript advanced compression
+        # Lower quality = lower resolution and higher downsampling
+        # Higher quality = higher resolution, less downsampling
+        # We'll dynamically set image resolution and downsampling
+        # For advanced control, set -dColorImageResolution and -dDownsampleType
         if quality <= 30:
             pdf_setting = "/screen"
+            resolution = 72
         elif quality <= 60:
             pdf_setting = "/ebook"
+            resolution = 100
         elif quality <= 85:
             pdf_setting = "/printer"
+            resolution = 150
         else:
             pdf_setting = "/prepress"
+            resolution = 300
 
         with tempfile.NamedTemporaryFile(suffix=".pdf") as in_file, tempfile.NamedTemporaryFile(suffix=".pdf") as out_file:
             pdfs[0].save(in_file.name)
@@ -78,6 +84,12 @@ def convert():
                 "-sDEVICE=pdfwrite",
                 "-dCompatibilityLevel=1.4",
                 f"-dPDFSETTINGS={pdf_setting}",
+                f"-dColorImageDownsampleType=/Bicubic",
+                f"-dColorImageResolution={resolution}",
+                f"-dGrayImageDownsampleType=/Bicubic",
+                f"-dGrayImageResolution={resolution}",
+                f"-dMonoImageDownsampleType=/Subsample",
+                f"-dMonoImageResolution={resolution}",
                 "-dNOPAUSE",
                 "-dQUIET",
                 "-dBATCH",

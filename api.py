@@ -59,6 +59,7 @@ def convert():
                         pdf_stream = io.BytesIO(pfile.read())
                         pdfs.append(pdf_stream)
                 except Exception as e:
+                    # Return error and do not reference pdf_path
                     return jsonify({"error": f"Office to PDF error: {str(e)}"}), 500
                 finally:
                     os.remove(tmp_office.name)

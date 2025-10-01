@@ -1,138 +1,195 @@
-import os
-import io
-import tempfile
-import subprocess
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Universal Compressor/Converter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #eef3f9; }
+    .container-box { max-width: 600px; margin: 2em auto; background: #fff; border-radius: 13px; box-shadow: 0 2px 14px #2222; padding: 2em; }
+    .preview-frame { width: 340px; height: 260px; margin: 1em auto; background: #fafbfc; border-radius: 8px; border: 1px solid #cfd8dc; display: flex; align-items: center; justify-content: center; overflow: hidden;}
+    .preview-img { max-width: 100%; max-height: 100%; border-radius: 6px; border: none; cursor: pointer; transition: box-shadow .2s; }
+    .file-info, .compressed-info { margin: 1em 0; font-size: 1em; color: #195a6d;}
+    .error { color: #d32f2f; margin-top: .7em; text-align: center;}
+    .advanced-panel { display: none; margin-top: 1em; background: #f6f6f6; padding: 1em; border-radius: 8px; }
+    .slider-label { font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="container container-box">
+    <h2 class="text-center mb-4 text-primary">Universal Compressor/Converter</h2>
+    <div class="mb-3 text-center">
+      <input type="file" id="fileInput" class="form-control" multiple accept="application/pdf,image/jpeg,image/png,image/webp,image/avif,image/svg+xml,image/bmp,image/x-ms-bmp,image/heif,image/heic,image/*" />
+    </div>
+    <div class="file-info" id="fileInfo"></div>
+    <div class="preview-frame" id="previewFrame" style="display:none;">
+      <img id="imgPreview" class="preview-img" style="display:none;" />
+    </div>
+    <div class="mb-4 text-center" id="actionRow" style="display:none;">
+      <div class="mb-2">
+        <label class="slider-label">Compression Quality: <span id="qualityValue">80</span></label>
+        <input type="range" id="qualitySlider" min="10" max="100" value="80" step="1" style="width: 180px;">
+      </div>
+      <div class="mb-2">
+        <label class="slider-label">Resize: </label>
+        <input type="number" id="resizeWidth" placeholder="Width (px)" style="width: 100px;">
+        <input type="number" id="resizeHeight" placeholder="Height (px)" style="width: 100px;">
+      </div>
+      <div class="mb-2">
+        <label class="slider-label">Output Format: </label>
+        <select id="formatSelect">
+          <option value="pdf">PDF</option>
+          <option value="jpeg">JPEG</option>
+          <option value="png">PNG</option>
+          <option value="svg">SVG</option>
+          <option value="avif">AVIF</option>
+          <option value="heif">HEIF</option>
+          <option value="heic">HEIC</option>
+        </select>
+      </div>
+      <button id="convertBtn" class="btn btn-primary">Convert / Compress</button>
+      <button id="toggleAdvanced" class="btn btn-link" style="margin-left:15px;">Advanced Options</button>
+    </div>
+    <div class="advanced-panel" id="advancedPanel">
+      <div>
+        <label>DPI: </label>
+        <input type="number" id="dpiInput" style="width: 90px;" value="150">
+        <label style="margin-left:15px;">Grayscale: </label>
+        <input type="checkbox" id="grayscaleInput">
+      </div>
+    </div>
+    <div class="error" id="errorMsg"></div>
+    <div class="compressed-section" id="compressedSection" style="display:none;">
+      <div class="file-info" id="compressedInfo"></div>
+      <div class="text-center">
+        <button id="downloadBtn" class="btn btn-success" style="display:none;">Download</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const imgPreview = document.getElementById('imgPreview');
+    const previewFrame = document.getElementById('previewFrame');
+    const actionRow = document.getElementById('actionRow');
+    const qualitySlider = document.getElementById('qualitySlider');
+    const qualityValue = document.getElementById('qualityValue');
+    const resizeWidth = document.getElementById('resizeWidth');
+    const resizeHeight = document.getElementById('resizeHeight');
+    const formatSelect = document.getElementById('formatSelect');
+    const convertBtn = document.getElementById('convertBtn');
+    const errorMsg = document.getElementById('errorMsg');
+    const compressedSection = document.getElementById('compressedSection');
+    const compressedInfo = document.getElementById('compressedInfo');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const toggleAdvanced = document.getElementById('toggleAdvanced');
+    const advancedPanel = document.getElementById('advancedPanel');
+    const dpiInput = document.getElementById('dpiInput');
+    const grayscaleInput = document.getElementById('grayscaleInput');
 
-from flask import Flask, send_from_directory, send_file, request, jsonify
-from PIL import Image
+    let files = [];
+    let compressedBlob = null;
+    let compressedDataUrl = null;
+    let compressedFilename = null;
 
-app = Flask(__name__)
+    fileInput.onchange = function(e) {
+      files = Array.from(e.target.files);
+      resetUI();
+      if (!files.length) return;
+      let info = files.map(f => {
+        let type = f.type || f.name.split('.').pop();
+        return `${f.name} (${type}, ${(f.size/1024).toFixed(2)} KB)`;
+      }).join("<br>");
+      fileInfo.innerHTML = info;
 
-@app.route('/')
-def serve_index():
-    return send_from_directory('.', 'index.html')
+      let isPdf = files.length === 1 && (files[0].type === "application/pdf" || files[0].name.toLowerCase().endsWith(".pdf"));
+      let isImages = files.every(f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|avif|svg|bmp|heif|heic)$/i.test(f.name));
 
-@app.route('/convert', methods=['POST'])
-def convert():
-    files = list(request.files.values())
-    if not files:
-        return jsonify({"error": "No files uploaded"}), 400
+      if (isPdf || isImages) {
+        if (isImages) showImagePreview(files[0]);
+        actionRow.style.display = "block";
+      } else {
+        errorMsg.textContent = "Unsupported file type.";
+        actionRow.style.display = "none";
+      }
+    };
 
-    quality = int(request.form.get("quality", 80))
-    output_format = request.form.get("output_format", "pdf").lower()
+    function resetUI() {
+      fileInfo.innerHTML = '';
+      imgPreview.style.display = 'none';
+      previewFrame.style.display = 'none';
+      actionRow.style.display = 'none';
+      errorMsg.textContent = '';
+      compressedSection.style.display = 'none';
+      compressedInfo.textContent = '';
+      downloadBtn.style.display = 'none';
+      compressedBlob = null;
+      compressedDataUrl = null;
+      compressedFilename = null;
+      advancedPanel.style.display = 'none';
+    }
 
-    imgs = []
-    pdfs = []
+    function showImagePreview(file) {
+      previewFrame.style.display = "flex";
+      imgPreview.style.display = "block";
+      if (file.type === "image/svg+xml" || /\.svg$/i.test(file.name)) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          imgPreview.src = "data:image/svg+xml;base64," + btoa(e.target.result);
+        };
+        reader.readAsText(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          imgPreview.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
 
-    # Separate PDFs and images
-    for file in files:
-        ext = file.filename.split(".")[-1].lower()
-        mime = file.mimetype
-        if ext == "pdf" or mime == "application/pdf":
-            pdfs.append(file)
-        else:
-            img = None
-            if ext in ["heif", "heic"]:
-                try:
-                    import pillow_heif
-                    heif_file = pillow_heif.read_heif(file.read())
-                    img = Image.frombytes(
-                        heif_file.mode, heif_file.size, heif_file.data, "raw"
-                    )
-                except ImportError:
-                    return jsonify({"error": "pillow-heif not installed"}), 500
-            elif ext == "avif":
-                img = Image.open(file.stream).convert("RGB")
-            elif ext == "webp":
-                img = Image.open(file.stream)
-            elif ext == "svg":
-                try:
-                    from cairosvg import svg2png
-                    png_bytes = svg2png(bytestring=file.read())
-                    img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-                except ImportError:
-                    return jsonify({"error": "cairosvg not installed"}), 500
-            else:
-                img = Image.open(file.stream)
-            if img:
-                imgs.append(img)
+    qualitySlider.oninput = function() {
+      qualityValue.textContent = qualitySlider.value;
+    };
 
-    # PDF compression with slider-based quality
-    if pdfs and output_format == "pdf":
-        # Map quality (10-100) to Ghostscript PDFSETTINGS
-        # Lower quality = more compressed (smaller), higher quality = less compressed
-        # We'll interpolate between /screen (low), /ebook (medium), /printer (high), /prepress (best)
-        if quality <= 30:
-            pdf_setting = "/screen"
-        elif quality <= 60:
-            pdf_setting = "/ebook"
-        elif quality <= 85:
-            pdf_setting = "/printer"
-        else:
-            pdf_setting = "/prepress"
+    toggleAdvanced.onclick = function() {
+      advancedPanel.style.display = advancedPanel.style.display === "none" ? "block" : "none";
+    };
 
-        with tempfile.NamedTemporaryFile(suffix=".pdf") as in_file, tempfile.NamedTemporaryFile(suffix=".pdf") as out_file:
-            pdfs[0].save(in_file.name)
-            gs_cmd = [
-                "gs",
-                "-sDEVICE=pdfwrite",
-                "-dCompatibilityLevel=1.4",
-                f"-dPDFSETTINGS={pdf_setting}",
-                "-dNOPAUSE",
-                "-dQUIET",
-                "-dBATCH",
-                f"-sOutputFile={out_file.name}",
-                in_file.name
-            ]
-            try:
-                subprocess.run(gs_cmd, check=True)
-            except Exception as e:
-                return jsonify({"error": f"Ghostscript error: {str(e)}"}), 500
-            return send_file(out_file.name, mimetype="application/pdf", as_attachment=True, download_name="compressed.pdf")
+    convertBtn.onclick = async function() {
+      errorMsg.textContent = "Processing...";
+      let fd = new FormData();
+      files.forEach((f,i) => fd.append("file"+i, f));
+      fd.append("quality", qualitySlider.value);
+      fd.append("resize_width", resizeWidth.value);
+      fd.append("resize_height", resizeHeight.value);
+      fd.append("output_format", formatSelect.value);
+      fd.append("dpi", dpiInput.value);
+      fd.append("grayscale", grayscaleInput.checked ? "1" : "0");
+      try {
+        const resp = await fetch("/convert", { method: "POST", body: fd });
+        if (!resp.ok) throw new Error("Conversion failed");
+        compressedBlob = await resp.blob();
+        compressedDataUrl = URL.createObjectURL(compressedBlob);
+        compressedFilename = "converted." + formatSelect.value;
+        compressedInfo.innerHTML = `Output: ${compressedFilename} (${(compressedBlob.size/1024).toFixed(2)} KB)`;
+        compressedSection.style.display = "block";
+        downloadBtn.style.display = "inline-block";
+        errorMsg.textContent = "";
+      } catch (e) {
+        errorMsg.textContent = "Conversion failed: " + e;
+      }
+    };
 
-    # Image(s) to PDF
-    if imgs and output_format == "pdf":
-        output = io.BytesIO()
-        imgs[0].save(output, format="PDF", save_all=True, append_images=imgs[1:])
-        output.seek(0)
-        return send_file(output, mimetype="application/pdf", as_attachment=True, download_name="converted.pdf")
-
-    # Image(s) to image format
-    if imgs and output_format in ["jpeg", "png", "webp", "avif", "heif", "heic"]:
-        output = io.BytesIO()
-        save_kwargs = {}
-        if output_format in ["jpeg", "webp", "avif", "heif", "heic"]:
-            save_kwargs["quality"] = quality
-        imgs[0].save(output, format=output_format.upper(), **save_kwargs)
-        output.seek(0)
-        mime = f"image/{output_format}"
-        ext = output_format
-        return send_file(output, mimetype=mime, as_attachment=True, download_name=f"converted.{ext}")
-
-    # PDF to image conversion (first page only, speed)
-    if pdfs and output_format in ["jpeg", "png", "webp", "avif", "heif", "heic"]:
-        try:
-            import fitz
-        except ImportError:
-            return jsonify({"error": "PyMuPDF (fitz) not installed"}), 500
-        pdf_stream = io.BytesIO(pdfs[0].read())
-        pdf_doc = fitz.open(stream=pdf_stream.read(), filetype="pdf")
-        page = pdf_doc.load_page(0)
-        pix = page.get_pixmap()
-        img_bytes = pix.tobytes(output="png")
-        img = Image.open(io.BytesIO(img_bytes))
-        output = io.BytesIO()
-        save_kwargs = {}
-        if output_format in ["jpeg", "webp", "avif", "heif", "heic"]:
-            save_kwargs["quality"] = quality
-        img.save(output, format=output_format.upper(), **save_kwargs)
-        output.seek(0)
-        mime = f"image/{output_format}"
-        ext = output_format
-        return send_file(output, mimetype=mime, as_attachment=True, download_name=f"converted.{ext}")
-
-    return jsonify({"error": "Conversion operation not supported or no valid files"}), 400
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    downloadBtn.onclick = function() {
+      if (!compressedBlob) return;
+      const a = document.createElement('a');
+      a.href = compressedDataUrl;
+      a.download = compressedFilename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{URL.revokeObjectURL(compressedDataUrl)}, 1000);
+      document.body.removeChild(a);
+    };
+  </script>
+</body>
+</html>

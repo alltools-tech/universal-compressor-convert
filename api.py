@@ -9,7 +9,6 @@ from PIL import Image
 app = Flask(__name__)
 
 def convert_office_to_pdf(input_file, output_dir):
-    # LibreOffice must be installed and "soffice" available in PATH
     cmd = [
         "soffice",
         "--headless",
@@ -18,7 +17,6 @@ def convert_office_to_pdf(input_file, output_dir):
         input_file
     ]
     subprocess.run(cmd, check=True)
-    # Find output PDF
     base = os.path.basename(input_file)
     name, _ = os.path.splitext(base)
     pdf_path = os.path.join(output_dir, f"{name}.pdf")
@@ -59,9 +57,11 @@ def convert():
                         pdf_stream = io.BytesIO(pfile.read())
                         pdfs.append(pdf_stream)
                 except Exception as e:
-                    # Return error and do not reference pdf_path
+                    os.remove(tmp_office.name)
+                    if pdf_path and os.path.exists(pdf_path):
+                        os.remove(pdf_path)
                     return jsonify({"error": f"Office to PDF error: {str(e)}"}), 500
-                finally:
+                else:
                     os.remove(tmp_office.name)
                     if pdf_path and os.path.exists(pdf_path):
                         os.remove(pdf_path)

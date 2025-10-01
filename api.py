@@ -52,6 +52,7 @@ def convert():
         if ext in office_exts:
             with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp_office:
                 file.save(tmp_office.name)
+                pdf_path = None
                 try:
                     pdf_path = convert_office_to_pdf(tmp_office.name, os.path.dirname(tmp_office.name))
                     with open(pdf_path, "rb") as pfile:
@@ -61,7 +62,7 @@ def convert():
                     return jsonify({"error": f"Office to PDF error: {str(e)}"}), 500
                 finally:
                     os.remove(tmp_office.name)
-                    if os.path.exists(pdf_path):
+                    if pdf_path and os.path.exists(pdf_path):
                         os.remove(pdf_path)
         # PDF files
         elif ext == "pdf" or mime == "application/pdf":

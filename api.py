@@ -32,7 +32,6 @@ def convert():
             pdfs.append(file)
         else:
             img = None
-            # HEIF/HEIC support
             if ext in ["heif", "heic"]:
                 try:
                     import pillow_heif
@@ -42,13 +41,10 @@ def convert():
                     )
                 except ImportError:
                     return jsonify({"error": "pillow-heif not installed"}), 500
-            # AVIF support
             elif ext == "avif":
                 img = Image.open(file.stream).convert("RGB")
-            # WebP support
             elif ext == "webp":
                 img = Image.open(file.stream)
-            # SVG to PNG for PDF
             elif ext == "svg":
                 try:
                     from cairosvg import svg2png
@@ -61,15 +57,27 @@ def convert():
             if img:
                 imgs.append(img)
 
-    # PDF compression
+    # PDF compression with slider-based quality
     if pdfs and output_format == "pdf":
+        # Map quality (10-100) to Ghostscript PDFSETTINGS
+        # Lower quality = more compressed (smaller), higher quality = less compressed
+        # We'll interpolate between /screen (low), /ebook (medium), /printer (high), /prepress (best)
+        if quality <= 30:
+            pdf_setting = "/screen"
+        elif quality <= 60:
+            pdf_setting = "/ebook"
+        elif quality <= 85:
+            pdf_setting = "/printer"
+        else:
+            pdf_setting = "/prepress"
+
         with tempfile.NamedTemporaryFile(suffix=".pdf") as in_file, tempfile.NamedTemporaryFile(suffix=".pdf") as out_file:
             pdfs[0].save(in_file.name)
             gs_cmd = [
                 "gs",
                 "-sDEVICE=pdfwrite",
                 "-dCompatibilityLevel=1.4",
-                f"-dPDFSETTINGS=/ebook",
+                f"-dPDFSETTINGS={pdf_setting}",
                 "-dNOPAUSE",
                 "-dQUIET",
                 "-dBATCH",
@@ -109,7 +117,7 @@ def convert():
             return jsonify({"error": "PyMuPDF (fitz) not installed"}), 500
         pdf_stream = io.BytesIO(pdfs[0].read())
         pdf_doc = fitz.open(stream=pdf_stream.read(), filetype="pdf")
-        page = pdf_doc.load_page(0)  # Only first page for speed!
+        page = pdf_doc.load_page(0)
         pix = page.get_pixmap()
         img_bytes = pix.tobytes(output="png")
         img = Image.open(io.BytesIO(img_bytes))

@@ -48,23 +48,31 @@ def convert():
 
         # Office files: Convert to PDF first
         if ext in office_exts:
-            with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp_office:
+            pdf_path = None
+            tmp_office = None
+            try:
+                tmp_office = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
                 file.save(tmp_office.name)
-                pdf_path = None
-                try:
-                    pdf_path = convert_office_to_pdf(tmp_office.name, os.path.dirname(tmp_office.name))
-                    with open(pdf_path, "rb") as pfile:
-                        pdf_stream = io.BytesIO(pfile.read())
-                        pdfs.append(pdf_stream)
-                except Exception as e:
-                    os.remove(tmp_office.name)
-                    if pdf_path and os.path.exists(pdf_path):
-                        os.remove(pdf_path)
-                    return jsonify({"error": f"Office to PDF error: {str(e)}"}), 500
-                else:
-                    os.remove(tmp_office.name)
-                    if pdf_path and os.path.exists(pdf_path):
-                        os.remove(pdf_path)
+                pdf_path = convert_office_to_pdf(tmp_office.name, os.path.dirname(tmp_office.name))
+                with open(pdf_path, "rb") as pfile:
+                    pdf_stream = io.BytesIO(pfile.read())
+                    pdfs.append(pdf_stream)
+            except Exception as e:
+                # Clean up files if exception happens
+                if tmp_office:
+                    try: os.remove(tmp_office.name)
+                    except: pass
+                if pdf_path and os.path.exists(pdf_path):
+                    try: os.remove(pdf_path)
+                    except: pass
+                return jsonify({"error": f"Office to PDF error: {str(e)}"}), 500
+            # Clean up after success
+            if tmp_office:
+                try: os.remove(tmp_office.name)
+                except: pass
+            if pdf_path and os.path.exists(pdf_path):
+                try: os.remove(pdf_path)
+                except: pass
         # PDF files
         elif ext == "pdf" or mime == "application/pdf":
             pdfs.append(file)

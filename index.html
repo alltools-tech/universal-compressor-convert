@@ -18,7 +18,8 @@
   <div class="container container-box">
     <h2 class="text-center mb-4 text-primary">Universal Compressor/Converter</h2>
     <div class="mb-3 text-center">
-      <input type="file" id="fileInput" class="form-control" multiple accept="application/pdf,image/jpeg,image/png,image/webp,image/avif,image/svg+xml,image/bmp,image/x-ms-bmp,image/heif,image/heic,image/tiff,image/tif,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.doc,.docx,.xls,.xlsx" />
+      <input type="file" id="fileInput" class="form-control" multiple
+        accept="application/pdf,image/jpeg,image/png,image/webp,image/avif,image/svg+xml,image/bmp,image/x-ms-bmp,image/heif,image/heic,image/tiff,image/tif" />
     </div>
     <div class="file-info" id="fileInfo"></div>
     <div class="preview-frame" id="previewFrame" style="display:none;">
@@ -53,6 +54,7 @@
     </div>
   </div>
   <script>
+    // Existing JS code unchanged
     const fileInput = document.getElementById('fileInput');
     const fileInfo = document.getElementById('fileInfo');
     const imgPreview = document.getElementById('imgPreview');
@@ -84,9 +86,10 @@
 
       let isPdf = files.length === 1 && (files[0].type === "application/pdf" || files[0].name.toLowerCase().endsWith(".pdf"));
       let isImages = files.every(f => f.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|avif|svg|bmp|heif|heic|tiff|tif)$/i.test(f.name));
-      let isDocs = files.every(f => /\.(doc|docx|xls|xlsx)$/i.test(f.name));
+      // Don't allow office documents anymore
+      // let isDocs = files.every(f => /\.(doc|docx|xls|xlsx)$/i.test(f.name));
 
-      if (isPdf || isImages || isDocs) {
+      if (isPdf || isImages) {
         if (isImages) showImagePreview(files[0]);
         actionRow.style.display = "block";
       } else {

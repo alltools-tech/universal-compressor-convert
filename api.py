@@ -58,7 +58,9 @@ def convert():
                     pdf_stream = io.BytesIO(pfile.read())
                     pdfs.append(pdf_stream)
             except Exception as e:
-                # Clean up files if exception happens
+                import traceback
+                print("DEBUG ERROR:", str(e))
+                print(traceback.format_exc())
                 if tmp_office:
                     try: os.remove(tmp_office.name)
                     except: pass
@@ -66,7 +68,6 @@ def convert():
                     try: os.remove(pdf_path)
                     except: pass
                 return jsonify({"error": f"Office to PDF error: {str(e)}"}), 500
-            # Clean up after success
             if tmp_office:
                 try: os.remove(tmp_office.name)
                 except: pass
@@ -114,6 +115,9 @@ def convert():
                 img = Image.open(file.stream)
                 imgs.append(img)
             except Exception as e:
+                import traceback
+                print("DEBUG ERROR:", str(e))
+                print(traceback.format_exc())
                 return jsonify({"error": f"Image error: {str(e)}"}), 400
 
     # PDF compression with slider-based quality
@@ -155,6 +159,9 @@ def convert():
             try:
                 subprocess.run(gs_cmd, check=True)
             except Exception as e:
+                import traceback
+                print("DEBUG ERROR:", str(e))
+                print(traceback.format_exc())
                 return jsonify({"error": f"Ghostscript error: {str(e)}"}), 500
             return send_file(out_file.name, mimetype="application/pdf", as_attachment=True, download_name="compressed.pdf")
 
